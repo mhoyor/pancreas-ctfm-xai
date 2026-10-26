@@ -37,7 +37,11 @@ from config import BHX_MANUAL_CSV, HEADCT_DIR
 # kernel list printed by cq500_inventory.py and extend this pattern if a bone kernel slips through.
 BONE_KERNEL = re.compile(r"BONE|SHARP|EDGE|LUNG|DETAIL|\bH[6-9]\d|\bB[6-9]\d|\bJ[6-9]\d", re.IGNORECASE)
 BONE_DESC = re.compile(r"BONE|SHARP|LUNG", re.IGNORECASE)
-CONTRAST_DESC = re.compile(r"C\+|CONTRAST|POST|CTA|ANGIO|\bCE\b", re.IGNORECASE)
+# Post-contrast series only. "PRE CONTRAST" / "NON CONTRAST" / "WITHOUT CONTRAST" mean the opposite and are
+# removed first (CQ500 names many plain scans "PRE CONTRAST 5MM STD"); bare "POST" is not used because of
+# descriptions like "POST FOSSA" (posterior fossa).
+NON_CONTRAST_DESC = re.compile(r"\b(?:PRE|NON|WITHOUT|W/?O)[\s_-]*(?:CONTRAST|CON|C)\b|\bPLAIN\b", re.IGNORECASE)
+CONTRAST_DESC = re.compile(r"C\+|\bCONTRAST\b|\bCTA\b|ANGIO|\bCE\b|\bWITH[\s_-]*(?:CONTRAST|C)\b", re.IGNORECASE)
 LOCALIZER = re.compile(r"LOCALIZER|SCOUT|TOPOGRAM|SURVIEW", re.IGNORECASE)
 
 
@@ -80,7 +84,8 @@ def flag_series(inv, min_thk=2.5, max_thk=6.0, max_tilt=30.0, min_slices=15, min
     s["is_localizer"] = txt("image_type").str.contains(LOCALIZER) | txt("series_description").str.contains(LOCALIZER)
     s["is_axial"] = (s["plane_tilt_deg"] <= max_tilt) & (s["n_orientations"] == 1)
     s["is_bone"] = txt("kernel").str.contains(BONE_KERNEL) | txt("series_description").str.contains(BONE_DESC)
-    s["is_contrast"] = (txt("contrast_agent").str.strip() != "") | txt("series_description").str.contains(CONTRAST_DESC)
+    desc_post = txt("series_description").str.replace(NON_CONTRAST_DESC, " ", regex=True)
+    s["is_contrast"] = (txt("contrast_agent").str.strip() != "") | desc_post.str.contains(CONTRAST_DESC)
     s["enough_slices"] = s["n_positions"] >= min_slices
     s["covers_head"] = s["z_extent_mm"] >= min_extent
     s["regular_spacing"] = s["z_spacing_cv"].fillna(1.0) <= max_spacing_cv
