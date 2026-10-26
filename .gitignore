@@ -51,3 +51,6 @@ checkpoints/
 .idea/
 .vscode/
 data/metadata.numbers
+
+data/headct/file_index.csv.gz
+cq500_data/
