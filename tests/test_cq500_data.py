@@ -11,7 +11,7 @@ import pandas as pd
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from cq500_inventory import build_inventory, summarise_series  # noqa: E402
 from cq500_labels import build_labels, fleiss_kappa_binary, normalise_case_id  # noqa: E402
-from cq500_select_series import parse_box, select  # noqa: E402
+from cq500_select_series import flag_series, parse_box, select  # noqa: E402
 
 AXIAL = [1, 0, 0, 0, 1, 0]
 
@@ -103,6 +103,22 @@ def test_inventory_and_selection():
     assert "no eligible" in reasons["CQ500-CT-2"] and "no DICOM" in reasons["CQ500-CT-4"]
 
 
+def test_contrast_descriptions():
+    """Real CQ500 names: 'PRE CONTRAST 5MM STD' is a plain (non-contrast) scan and must stay eligible."""
+    descs = {"PRE CONTRAST 5MM STD": False, "PRE CONTRAST THIN": False, "NON CONTRAST": False,
+             "PLAIN 5mm": False, "POST FOSSA 5mm": False, "5mm": False, "2.5/5mm": False,
+             "POST CONTRAST 5MM": True, "WITH CONTRAST": True, "C+ 5mm": True, "CTA HEAD": True}
+    headers = []
+    for i, d in enumerate(descs):
+        headers += fake_series(i, f"s{i}", 30, 5.0, desc=d, start=i)
+    inv, _ = build_inventory(headers)
+    flags = flag_series(inv).set_index("series_description")["is_contrast"]
+    wrong = {d: bool(flags[d]) for d, want in descs.items() if bool(flags[d]) != want}
+    assert not wrong, f"contrast rule wrong for: {wrong}"
+    # and the pre-contrast standard-kernel 5 mm series is selectable
+    assert flag_series(inv).set_index("series_description").loc["PRE CONTRAST 5MM STD", "eligible_thick"]
+
+
 def test_bhx_box_parsing():
     assert parse_box("{'x': 263.9, 'y': 252.0, 'width': 26.7, 'height': 22.6}")["width"] == 26.7
     assert parse_box('{"x": 1, "y": 2, "width": 3, "height": 4}') == {"x": 1, "y": 2, "width": 3, "height": 4}
@@ -113,5 +129,6 @@ if __name__ == "__main__":
     test_labels_majority_and_kappa()
     test_series_geometry()
     test_inventory_and_selection()
+    test_contrast_descriptions()
     test_bhx_box_parsing()
     print("all CQ500 data checks passed")
